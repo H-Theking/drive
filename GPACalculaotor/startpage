@@ -1,0 +1,332 @@
+package gpa.calculator;
+
+import java.awt.Component;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JTextField;
+
+public class Start extends JFrame {
+
+    private ResultSetTableModel tableModel;
+    private GridBagLayout layout; // layout of this frame
+    private GridBagConstraints constraints; // constraints of this layout
+    private JLabel labelStudentID;
+    private JLabel labelCalculation;
+    private JLabel labelName;
+    private JLabel labelFaculty;
+    private JLabel labelProgramme;
+    private JLabel labelSpecialization;
+    private JTextField studentID;
+    private JTextField studentName;
+    private JComboBox faculty;
+    private JComboBox calc;
+    private JComboBox programme;
+    private JComboBox specialization;
+    private JButton done;
+    //selection and entry variables
+    public static String myName;
+    public String[] myNames;
+    public static String myStudentID;
+    public static String myFaculty;
+    public static String myProgramme;
+    public static String mySpecialty;
+    public static String calculationType;
+    public static int semester;
+    //Database variables
+    private static final String DATABASE_URL = "jdbc:derby:DefaultDatabase";
+    private static final String USERNAME = "app";
+    private static final String PASSWORD = "";
+    boolean componentAdded = false;
+    private Statement statement;
+    private Connection connection;
+
+    public Start() throws SQLException {
+        super("GPA Calculator");
+        layout = new GridBagLayout();
+        setLayout(layout); // set frame layout
+        constraints = new GridBagConstraints(); // instantiate constraints
+
+        final String[] Faculties = {"Arts", "Science",
+            "Social and Management Science", "ASTI",
+            "Health Science", "Agiculture and Vetinary Medicine",
+            "Engineering and Technology", "College of Technology"};
+
+        faculty = new JComboBox(Faculties);
+        programme = new JComboBox();
+        specialization = new JComboBox();
+        calc = new JComboBox();
+
+        labelStudentID = new JLabel("StudentID");
+        labelName = new JLabel("Name");
+        labelFaculty = new JLabel("Faculty");
+        labelProgramme = new JLabel("Programme");
+        labelSpecialization = new JLabel("Specialization");
+        labelCalculation = new JLabel("Calculate");
+        studentName = new JTextField();
+        studentID = new JTextField("", 8);
+        done = new JButton("Done");
+        JLabel dummy = new JLabel("                      "
+                + "                               ");
+        faculty.setSelectedItem(Faculties[6]);
+        myFaculty = Faculties[6];
+
+        loadProgrammes(Faculties[6]);
+
+        Start.TextFieldHandler handler = new Start.TextFieldHandler();
+        studentID.addActionListener(handler);
+        studentName.addActionListener(handler);
+
+        studentName.setEnabled(false);
+        faculty.setEnabled(false);
+        programme.setEnabled(false);
+        specialization.setEnabled(false);
+        calc.setEnabled(false);
+
+        calc.addItem("Semester GPA");
+        calc.addItem("Cummulative GPA");
+        calculationType = calc.getItemAt(0).toString();
+
+        done.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent event) {
+                        myName = studentName.getText();
+                        if (!myName.matches("[A-Za-z’' -]+")) {
+                            JOptionPane.showMessageDialog(Start.this, "C'mon buddy, I need your real names "
+                                    + "to print your result slip.\n Is that asking too much?",
+                                    "Invalid name", JOptionPane.ERROR_MESSAGE);
+                        } else {
+                            myNames = myName.split(" ");
+                            String text = myFaculty.equals("College of Technology") || myFaculty.equals("ASTI")
+                            ? "Implementation not completed for " : "Implementation not completed for the "
+                            + "Faculty of ";
+                            if (!myFaculty.equals("Engineering and Technology")) {
+                                JOptionPane.showMessageDialog(Start.this, text + myFaculty,
+                                        "Sorry", JOptionPane.INFORMATION_MESSAGE);
+                            } else {
+                                if (myProgramme.equals("Electrical Engineering") || mySpecialty.equals("Telecommunications Engineering")) {
+                                    JOptionPane.showMessageDialog(Start.this, "No data yet in database for Electrical Engineering "
+                                            + "Department", "", JOptionPane.PLAIN_MESSAGE);
+                                } else {
+                                    String input = null;
+                                    if (calc.getSelectedItem().equals("Semester GPA")) {
+                                        do {
+                                            //System.out.println(JOptionPane.);
+                                            input = JOptionPane.showInputDialog(rootPane, "Semester: ");
+                                        } while (input != null && !input.matches("[1-8]"));
+                                        if (input != null) {
+                                            semester = Integer.parseInt(input);
+                                        }
+                                    }
+                                    if (calc.getSelectedItem().equals("Semester GPA") && input == null) {
+                                    } else {
+                                        Start.this.dispose();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+        faculty.addItemListener(
+                new ItemListener() {
+                    @Override
+                    public void itemStateChanged(ItemEvent event) {
+                        if (event.getStateChange() == ItemEvent.SELECTED) {
+                            myFaculty = faculty.getSelectedItem().toString();
+                            loadProgrammes(faculty.getSelectedItem().toString());
+                            System.out.println(faculty.getSelectedItem().toString());
+                        }
+                    }
+                });
+        programme.addItemListener(
+                new ItemListener() {
+                    @Override
+                    public void itemStateChanged(ItemEvent event) {
+                        if (event.getStateChange() == ItemEvent.SELECTED) {
+                            myProgramme = programme.getSelectedItem().toString();
+                            loadSpecialty(programme.getSelectedItem().toString());
+                            System.out.println(programme.getSelectedItem().toString());
+                        }
+                    }
+                });
+
+        specialization.addItemListener(
+                new ItemListener() {
+                    public void itemStateChanged(ItemEvent event) {
+                        if (event.getStateChange() == ItemEvent.SELECTED) {
+                            mySpecialty = specialization.getSelectedItem().toString();
+                        }
+                    }
+                });
+        calc.addItemListener(
+                new ItemListener() {
+                    @Override
+                    public void itemStateChanged(ItemEvent e) {
+                        calculationType = calc.getSelectedItem().toString();
+                    }
+                });
+        //add components to frame
+        constraints.fill = GridBagConstraints.HORIZONTAL;
+        addComponent(labelStudentID, 0, 0, 1, 1);
+        addComponent(dummy, 0, 1, 1, 1);
+        addComponent(studentID, 0, 2, 2, 1);
+        addComponent(labelCalculation, 2, 0, 1, 1);//**
+        addComponent(calc, 2, 1, 3, 1);
+        addComponent(labelName, 1, 0, 1, 1);
+        addComponent(studentName, 1, 1, 3, 1);
+        addComponent(labelFaculty, 3, 0, 1, 1);
+        addComponent(faculty, 3, 1, 3, 1);
+        addComponent(labelProgramme, 4, 0, 1, 1);
+        addComponent(programme, 4, 1, 3, 1);
+        addComponent(labelSpecialization, 5, 0, 1, 1);
+        addComponent(specialization, 5, 1, 3, 1);/**/
+
+        addComponent(done, 7, 3, 1, 1);
+    }//end of Start constructor
+
+    private void addComponent(Component component,
+            int row, int column, int width, int height) {
+        constraints.gridx = column; // set gridx
+        constraints.gridy = row; // set gridy
+        constraints.gridwidth = width; // set gridwidth
+        constraints.gridheight = height; // set gridheight
+        layout.setConstraints(component, constraints); // set constraints
+        add(component); // add component
+    } // end method addComponent
+
+    private void loadProgrammes(String faculty) {
+        String PROGRAMME_QUERY = "SELECT name FROM programme where faculty = " + "'" + faculty + "'";
+        ResultSet resultSet = null; // manages results
+        openDatabase();
+
+        try {
+            resultSet = statement.executeQuery(PROGRAMME_QUERY);
+            if (programme.getItemCount() > 0) {
+                programme.removeAllItems();
+            }
+            if (resultSet.first()) {
+                do {
+                    programme.addItem(resultSet.getObject(1).toString());
+                } while (resultSet.next());
+            }
+            // fill the programme combobox
+            if (programme.getItemCount() > 0) {
+                myProgramme = programme.getItemAt(0).toString();
+                loadSpecialty(programme.getItemAt(0).toString());
+                programme.setEnabled(true);
+            } else {
+                loadSpecialty(null);
+                programme.setEnabled(false);
+            }
+        } catch (SQLException sqlException) {
+            sqlException.printStackTrace();
+        } finally {
+            closeDatabase(resultSet);
+        }
+    }
+
+    private void loadSpecialty(String programme) {
+        String SPECIALITY_QUERY = "SELECT field FROM specialization where programme = " + "'" + programme + "'";
+        ResultSet resultSet = null; // manages results
+        openDatabase();
+        try {
+            resultSet = statement.executeQuery(SPECIALITY_QUERY);
+            if (specialization.getItemCount() > 0) {
+                specialization.removeAllItems();
+            }
+            if (resultSet.first()) {
+                do {
+                    specialization.addItem(resultSet.getObject(1).toString());
+                } while (resultSet.next());
+                specialization.setEnabled(true);
+                mySpecialty = specialization.getItemAt(0).toString();
+            }
+            // fill the programme combobox
+            if (specialization.getItemCount() == 0) {
+                specialization.setEnabled(false);
+            }
+        } catch (SQLException sqlException) {
+            sqlException.printStackTrace();
+        } finally {
+            closeDatabase(resultSet);
+        }
+    }
+
+    private void openDatabase() {
+        try {
+            // establish connection to database
+            connection = DriverManager.getConnection(
+                    DATABASE_URL, USERNAME, PASSWORD);
+            // create Statement for querying database
+            statement = connection.createStatement(
+                    ResultSet.TYPE_SCROLL_INSENSITIVE,
+                    ResultSet.CONCUR_READ_ONLY);
+
+        } catch (SQLException sqlException) {
+            sqlException.printStackTrace();
+        } // end catch
+    }
+
+    private void closeDatabase(ResultSet resultSet) {
+        try {
+            resultSet.close();
+            statement.close();
+            connection.close();
+        } // end try
+        catch (Exception exception) {
+            exception.printStackTrace();
+        } // end catch
+    } // end finally
+
+    private class TextFieldHandler implements ActionListener {
+
+        @Override
+        public void actionPerformed(ActionEvent event) {
+            if (event.getSource() == studentID) {
+                myStudentID = studentID.getText();
+                if (myStudentID.isEmpty()) {
+                    JOptionPane.showMessageDialog(Start.this, "Enter your student "
+                            + "identification number", "Empty Field", JOptionPane.INFORMATION_MESSAGE);
+                }
+                //check whether studentID follows the correct pattern
+                if (myStudentID.matches("[feFE]{2}1[0-3]{1}[A|a][0,1][0-9]{2}")) {//FE11A142
+                    myStudentID = studentID.getText().toUpperCase();
+                    studentID.setEnabled(false);
+                    studentName.setEnabled(true);
+                    faculty.setEnabled(true);
+                    calc.setEnabled(true);
+                    programme.setEnabled(true);
+                    specialization.setEnabled(true);
+                } else {//doesnot follow correct pattern
+                    JOptionPane.showMessageDialog(Start.this, "Your Identification number is invalid",
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                }
+                studentID.setText(studentID.getText().toUpperCase());
+            }
+        }
+    }
+    /*
+     public static void main(String[] args) throws SQLException {
+     Start startPage = new Start();
+     startPage.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+     startPage.setSize(400, 250); // set frame size
+     startPage.setVisible(true); // display frame
+     startPage.setResizable(false);
+     } // end main
+     */
+}
