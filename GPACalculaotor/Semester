@@ -1,0 +1,529 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package gpa.calculator;
+
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.swing.Box;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JFrame;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
+
+/**
+ *
+ * @author Harvey
+ */
+public final class Semester extends JFrame {
+
+    static final String DATABASE_URL = "jdbc:derby:DefaultDatabase";
+    static final String USERNAME = "app";
+    static final String PASSWORD = "";
+    private String query;
+    private ResultSetTableModel tableModel;
+    private final JButton previous;
+
+    private final JButton next;
+    private final JButton done;
+    private final JButton addCourse;
+    private int numberOfRows;
+    private final int semester;
+    private Connection connection = null; // manages connection
+    private Statement statement = null; // query statement 
+    private ResultSet resultSet;
+    private String selectedCourse;
+    private final String[] grades = {"A", "B+", "B", "C+", "C", "D+", "D", "F"};
+    private String[] tables;
+    private final Box centerBox, eastBox, westBox;
+    private int count = 0;
+    private final Box southBox;
+    private ArrayList<String> myGrades, addQueries;
+    private ArrayList<JComboBox> comboBoxes;
+    private ArrayList<JCheckBox> checkBoxes;
+    private JMenuItem remove;
+    private boolean removing;
+    JTable resultTable;
+
+    public Semester(String studentID, String studentName, String faculty, String programme, String specialty, int semester) throws SQLException {
+        super("Result Form");
+        this.semester = semester;
+        JMenu fileMenu = new JMenu("File"); // create file menu
+        fileMenu.setMnemonic('F'); // set mnemonic to F
+        remove = new JMenuItem("Remove");
+        remove.setMnemonic('R');
+        fileMenu.add(remove);
+        JMenuItem exit = new JMenuItem("Exit");
+        exit.setMnemonic('X');
+        fileMenu.add(exit);
+        JMenu helpMenu = new JMenu("Help"); // create format menu
+        helpMenu.setMnemonic('h'); // set mnemonic to r
+        JMenuItem content = new JMenuItem("Help contents");
+        JMenuItem about = new JMenuItem("About");
+        about.setMnemonic('A');
+        helpMenu.add(content);
+        helpMenu.add(about);
+        JMenuBar bar = new JMenuBar(); // create menu bar
+        setJMenuBar(bar); // add menu bar to application
+        bar.add(fileMenu);
+        bar.add(helpMenu);
+
+        addQueries = new ArrayList<>();
+        myGrades = new ArrayList<>();
+        comboBoxes = new ArrayList<>();
+        checkBoxes = new ArrayList<>();
+        tables = new String[3];
+        tables[2] = "ucourses";
+        southBox = Box.createHorizontalBox();//contains buttons
+        westBox = Box.createVerticalBox();//to hold checkboxes
+        eastBox = Box.createVerticalBox();//to hold grades comboboxes
+        centerBox = Box.createVerticalBox();//to hold resultTable
+
+        add(westBox, BorderLayout.WEST);
+        add(eastBox, BorderLayout.EAST);
+        add(centerBox, BorderLayout.CENTER);
+
+        add(southBox, BorderLayout.SOUTH);
+        done = new JButton("   Done   ");
+        addCourse = new JButton("Add Course");
+        previous = new JButton("Previous");
+        next = new JButton("   Next   ");
+        southBox.add(addCourse);
+        southBox.add(Box.createHorizontalGlue());
+        southBox.add(previous);
+        southBox.add(next);
+        southBox.add(done);
+        add(southBox, BorderLayout.SOUTH);
+
+        previous.setEnabled(false);
+
+        //create ResultSetTableModel and display database table
+        getTables(programme, specialty);
+        getQuery(specialty);
+        displayForm(query);
+
+        next.setEnabled(false);
+
+        exit.addActionListener(
+                new ActionListener() // anonymous inner class
+                {
+                    // terminate application when user clicks exit
+                    @Override
+                    public void actionPerformed(ActionEvent event) {
+                        tableModel.disconnectFromDatabase();
+                        System.exit(0); // exit application
+                    } // end method actionPerformed
+                } // end anonymous inner class
+        ); //end of action listener
+        remove.setEnabled(false);
+
+        content.addActionListener(null);
+        about.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        JOptionPane.showMessageDialog(Semester.this, "Application for calculating GPA for the University of Buea\n"
+                                + "GPA Calculator comes with ABSOLUTELY NO WARRANTY \n"
+                                + "This is a free software\n"
+                                + "Email: princeme.sama@gmail.com\n\n"
+                                + "                     Copyright (C) 2014 Harvey Sama",
+                                "About GPA Calculator", JOptionPane.PLAIN_MESSAGE);
+                    }
+                });
+
+        addCourse.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        try {
+                            addCourse();
+                        } catch (SQLException ex) {
+                            Logger.getLogger(Semester.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+
+                    }
+                });
+
+        done.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        calculateGPA();
+                    }
+                });
+        WindowListener l = new WindowAdapter() {
+
+            @Override
+            public void windowClosed(WindowEvent event) {
+                tableModel.disconnectFromDatabase();
+                System.exit(0);
+            }
+        };
+        Semester.this.addWindowListener(l);
+    }
+
+    public class InvalidMarkException extends Exception {
+
+        public InvalidMarkException(String message) {
+            super(message);
+        }
+    }
+
+    private class ComboBoxHandler implements ActionListener {
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            for (int i = 0; i < numberOfRows; i++) {
+                if (e.getSource().equals(comboBoxes.get(i))) {
+                    myGrades.set(i, comboBoxes.get(i).getSelectedItem().toString());
+                    break;
+                }
+            }
+
+        }
+    }
+
+    private void getTables(String programme, String specialty) {
+
+        if (programme.equals("Computer Engineering")) {
+            tables[0] = "cecourses";
+        } else {
+            tables[0] = "eecourses";
+        }
+        if (!specialty.isEmpty()) {
+            switch (specialty) {
+                case "Software Engineering":
+                    tables[1] = "secourses";
+                    break;
+                case "Network Engineering":
+                    tables[1] = "necourses";
+                    break;
+                case "Telecommunications Engineering":
+                    tables[1] = "telcourses";
+                default:
+                    tables[1] = "pscourses";
+                    break;
+            }
+        }
+    }
+
+    private void getQuery(String specialty) {
+        //tables[0] contains the programme table to query
+        //table[1] contains the specialty table to query
+        if (specialty.isEmpty() || semester < 5) {
+            query = "SELECT code, name, cv FROM " + tables[0]
+                    + " WHERE semester = "
+                    + semester;
+            System.out.println(tables[0]);
+        } else {
+            query = "SELECT code, name, cv FROM " + tables[0]
+                    + " WHERE semester = "
+                    + semester + " UNION (SELECT code, name, cv FROM "
+                    + tables[1] + " WHERE semester = " + semester + ")";
+
+        }//end of else
+        System.out.println(query);
+        count = 1;
+    }//end of method getQuery
+
+    public String searchCourses() {
+        String searchQuery;
+        if (semester < 7) {
+            searchQuery = "SELECT code, name FROM " + tables[0]
+                    + " WHERE semester < " + semester + " and "
+                    + "semester in "
+                    + " (SELECT number FROM semester WHERE name = "
+                    + "(SELECT name FROM semester WHERE number  = "
+                    + semester + ")) UNION (SELECT code, name FROM " + tables[2]
+                    + " WHERE semester = 3 or semester = mod( " + semester + ", 2))";
+           // System.out.println(searchQuery);
+        } else {
+            searchQuery = "SELECT code, name FROM " + tables[0] + " WHERE semester < "
+                    + semester + " and semester in (SELECT number FROM semester WHERE name = "
+                    + "(SELECT name FROM semester WHERE number = "
+                    + semester + ")) UNION " + "SELECT code, name FROM " + tables[1]
+                    + " WHERE semester < " + semester + " and semester in "
+                    + "(SELECT number FROM semester WHERE name = "
+                    + "(SELECT name FROM semester WHERE number = " + semester + ")) UNION "
+                    + "(SELECT code, name FROM " + tables[2] + " )"
+                    + "WHERE semester = 3 or semester = mod( " + semester + ", 2)";
+        }
+        return searchQuery;
+    }
+
+    public void addCoursePopUp() throws SQLException {
+        String searchQuery = searchCourses();
+        try {
+            connection = DriverManager.getConnection(DATABASE_URL, USERNAME, PASSWORD);
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+
+        }
+        statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+        resultSet = statement.executeQuery(searchQuery);// return code and names of couses
+        System.out.println(resultSet.first());
+        int j = 0;
+        if (resultSet.last()) {//get the number of rows and create a array of size numberOfRows
+
+            String[] list = new String[resultSet.getRow()];
+            resultSet.first();
+            do {//concatenate the code and the name of each course and fill the array with it for each course in the resultset
+                list[j++] = resultSet.getObject(1).toString().concat(" ").
+                        concat(resultSet.getObject(2).toString());
+            } while (resultSet.next());
+            //then display them
+            selectedCourse = JOptionPane.showInputDialog(Semester.this, "Select a course", "Add Course",
+                    JOptionPane.PLAIN_MESSAGE, null, list, list[0]).toString();
+        }
+    }//also create overidden function for the unspecialisable levels 
+
+    public void addCourse() throws SQLException {
+        addCoursePopUp();
+        numberOfRows = tableModel.getRowCount();
+        tableModel.resultSet.first();
+        if (!selectedCourse.isEmpty()) {
+            String courseCode = selectedCourse.split(" ")[0];
+            for (int i = 0; i < numberOfRows; i++) {
+                //if the courseid at the given row in the current resultset is the same as the SELECTed courseID
+                //display error and exit
+                if (tableModel.getValueAt(i, 0).toString().equals(courseCode)) {
+                    JOptionPane.showMessageDialog(Semester.this, selectedCourse + " is already in the list",
+                            " ", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+            }
+            //if we the course is not found in the resultset, then create a new query for a new resultset
+            if (tableModel.resultSet.getRow() >= numberOfRows) {
+                String newQuery;
+                //search the result in the general table
+                newQuery = "SELECT code, name, cv FROM " + tables[0] + " WHERE code = '"
+                        + courseCode + "'";
+                //if no results are found in the main table then search in the specialization table
+                if (!statement.executeQuery(newQuery).first()) {
+                    newQuery = "SELECT code, name, cv FROM " + tables[1] + " WHERE code = '"
+                            + courseCode + "'";
+                    //if no results are found in the other tables then search in the university courses
+                    if (!statement.executeQuery(newQuery).first()) {
+                        newQuery = "SELECT code, name, cv FROM " + tables[2] + " WHERE code = '"
+                                + courseCode + "'";
+                    }
+                }
+                newQuery = newQuery.concat(")");
+                addQueries.add("UNION (" + newQuery);
+                query = query.concat(" UNION (" + newQuery);
+                count++;
+                displayForm(query);
+            }
+        }
+    }
+
+    public void removeCourse(JTable resultTable) throws SQLException {
+        /* rowCount starts counting from 1,selectedRow starts counting from 0add 1,so I add 1 to have equivalent starting indices
+         * since thesubttraction returns number complementary to the indices in addQueries, 2 - all that value gives the actua index
+         * of the query that has to be removed from the resultSet
+         */
+        int index = (count - 1) - (resultTable.getRowCount() - resultTable.getSelectedRow());
+        System.out.println(addQueries);
+        System.out.println(index);
+        System.out.println(addQueries.get(index));
+        query = query.replace(addQueries.get(index), "");
+        addQueries.remove(index);
+        checkBoxes.remove(resultTable.getSelectedRow());
+        comboBoxes.remove(resultTable.getSelectedRow());
+        removing = true;
+        displayForm(query);
+
+    }
+
+    public void displayForm(String query) throws SQLException {
+        Dimension dim = new Dimension(50, 20);
+        Semester.ComboBoxHandler handler = null;
+        //Semester.CheckBoxHandler cHandler = null;
+        JComboBox combo;
+        JCheckBox check;
+        centerBox.removeAll();
+
+        if (count <= 1) {
+
+            handler = new Semester.ComboBoxHandler();
+            //cHandler = new Semester.CheckBoxHandler();
+            tableModel = new ResultSetTableModel(DATABASE_URL, USERNAME, PASSWORD, query);
+            resultTable = new JTable(tableModel);
+            resultTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            System.out.println(resultTable.getColumnName(0));
+            resultTable.getColumn("CODE").setMaxWidth(75);
+            resultTable.getColumn("NAME").setMinWidth(300);
+            resultTable.getColumn("CV").setMaxWidth(30);
+            resultTable.setRowHeight(20);
+
+            centerBox.add(new JScrollPane(resultTable), BorderLayout.CENTER);
+            numberOfRows = resultTable.getRowCount();
+            eastBox.add(Box.createVerticalStrut(24));
+            westBox.add(Box.createVerticalStrut(24));
+            for (int i = 0; i < numberOfRows; i++) {
+                check = new JCheckBox();
+                checkBoxes.add(check);
+                check.setEnabled(false);
+                //check.addItemListener(cHandler);//register it to the listener
+                westBox.add(check);//add to box
+
+                combo = new JComboBox(grades);
+                combo.setMinimumSize(dim);
+                combo.setMaximumSize(dim);
+                combo.addActionListener(handler);//register it to the listener
+                comboBoxes.add(combo);
+                myGrades.add(combo.getItemAt(0).toString());
+                eastBox.add(combo);
+                westBox.add(Box.createVerticalStrut(2));
+            }
+
+        } else {
+            centerBox.setVisible(false);
+            tableModel = new ResultSetTableModel(DATABASE_URL, USERNAME, PASSWORD, query);
+            resultTable = new JTable(tableModel);
+            resultTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            resultTable.getColumn("CODE").setMaxWidth(75);
+            resultTable.getColumn("NAME").setMinWidth(300);
+            resultTable.getColumn("CV").setMaxWidth(30);
+            resultTable.setRowHeight(20);
+            if (removing) {
+                eastBox.removeAll();
+                westBox.removeAll();
+                eastBox.add(Box.createVerticalStrut(24));
+                westBox.add(Box.createVerticalStrut(24));
+                for (int i = 0; i < resultTable.getRowCount(); i++) {
+                    eastBox.add(comboBoxes.get(i));
+                    westBox.add(checkBoxes.get(i));
+                    westBox.add(Box.createVerticalStrut(2));
+                }
+                removing = false;
+                count--;
+                if (!addCourse.isEnabled()) {
+                    addCourse.setEnabled(true);
+                }
+            } else {
+                resultSet.close();
+                statement.close();
+                connection.close();
+
+                check = new JCheckBox();
+                checkBoxes.add(check);
+                //check.addItemListener(cHandler);//register it to the listener
+                westBox.add(check);//add to box
+                check.setEnabled(false);
+
+                combo = new JComboBox(grades);
+                combo.setMinimumSize(dim);
+                combo.setMaximumSize(dim);
+                combo.addActionListener(handler);//register it to the listener
+                comboBoxes.add(combo);
+                myGrades.add(combo.getItemAt(0).toString());
+                eastBox.add(combo);
+                westBox.add(Box.createVerticalStrut(2));
+                if (count == 4) {
+                    addCourse.setEnabled(false);
+                }
+            }
+            centerBox.add(new JScrollPane(resultTable), BorderLayout.CENTER);
+            centerBox.setVisible(true);
+        }
+
+        resultTable.addMouseListener(
+                new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent event) {
+                        if (resultTable.getSelectedRow() != -1) {
+                            remove.setEnabled(true);
+                        } else {
+                            setEnabled(false);
+                        }
+                        System.out.println(resultTable.getSelectedRow() + " " + resultTable.getRowCount());
+                    }
+                });
+        remove.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+
+                        //if selected index is less than or equal to the number of courses in the initial load display error
+                        if (!(resultTable.getSelectedRow() <= resultTable.getRowCount() - count)) {
+                            try {
+                                removeCourse(resultTable);
+                            } catch (SQLException ex) {
+                                Logger.getLogger(Semester.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                        }
+                    }
+                });
+    }
+
+    public void calculateGPA() {
+        float GPA, sum = 0;
+        float totalCV = 0;
+        for (int i = 0; i < numberOfRows; i++) {
+            switch (myGrades.get(i)) {
+                case "A":
+                    sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 4;
+                    System.out.print(Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 4 + " ");
+                    break;
+                case "B+":
+                    sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 3.5;
+                    System.out.print(Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 3.5 + " ");
+                    break;
+                case "B":
+                    sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 3;
+                    System.out.print(Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 3 + " ");
+                    break;
+                case "C+":
+                    sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 2.5;
+                    System.out.print(Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 2.5 + " ");
+                    break;
+                case "C":
+                    sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 2;
+                    System.out.print(Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 2 + " ");
+                    break;
+                case "D+":
+                    sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 1.5;
+                    System.out.print(Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 1.5 + " ");
+                    break;
+                case "D":
+                    sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 1;
+                    System.out.print(Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 1 + " ");
+                    break;
+                default:
+                    sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 0;
+                    System.out.print(Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 0 + " ");
+                    break;
+            }
+            totalCV += Integer.parseInt(tableModel.getValueAt(i, 2).toString());
+
+        }
+        System.out.println(myGrades);
+        GPA = sum / totalCV;
+        JOptionPane.showMessageDialog(Semester.this, "Your GPA for Semester " + semester
+                + " is: " + GPA, "GPA", JOptionPane.INFORMATION_MESSAGE);
+    }
+}
