@@ -1,0 +1,752 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package gpa.calculator;
+
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.swing.Box;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JFormattedTextField;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
+import javax.swing.text.MaskFormatter;
+
+/**
+ *
+ * @author Harvey
+ */
+public final class Cummulative extends JFrame {
+
+    static final String DATABASE_URL = "jdbc:derby:DefaultDatabase;";
+    static final String USERNAME = "app";
+    static final String PASSWORD = "";
+    private String query;
+    private ResultSetTableModel tableModel;
+    private JButton previous;
+    private JButton next;
+    private JButton done;
+    private JButton addCourse;
+    private int numberOfRows;
+    private int Semester, arrayIndex;
+    private Connection connection = null; // manages connection
+    private Statement statement = null; // query statement 
+    private ResultSet resultSet;
+    private String selectedCourse;
+    private String[] grades = {"A", "B+", "B", "C+", "C", "D+", "D", "F"};
+    private String[] tables;
+    private Box centerBox, eastBox, westBox;
+    private int count = 0;
+    private final Box southBox;
+    private ArrayList<String> addQueries;
+    private TwoDimentionalArrayList<String> myGrades;
+    private TwoDimentionalArrayList<JComboBox> comboBoxes;
+    private TwoDimentionalArrayList<JCheckBox> checkBoxes;
+    private JMenuItem remove;
+    private boolean removing;
+    private float GPA, sum = 0, totalCV = 0;
+    private JTable resultTable;
+
+    public Cummulative(String faculty, String programme, final String specialty) throws SQLException {
+        super("Result Form");
+
+        Semester = 1;
+        arrayIndex = 0;
+        JMenu fileMenu = new JMenu("File"); // create file menu
+        fileMenu.setMnemonic('F'); // set mnemonic to F
+        remove = new JMenuItem("Remove");
+        remove.setMnemonic('R');
+        fileMenu.add(remove);
+        JMenuItem exit = new JMenuItem("Exit");
+        exit.setMnemonic('X');
+        fileMenu.add(exit);
+        JMenu helpMenu = new JMenu("Help"); // create format menu
+        helpMenu.setMnemonic('h'); // set mnemonic to r
+        JMenuItem content = new JMenuItem("Help contents");
+        JMenuItem about = new JMenuItem("About");
+        about.setMnemonic('A');
+        helpMenu.add(content);
+        helpMenu.add(about);
+        JMenuBar bar = new JMenuBar(); // create menu bar
+        setJMenuBar(bar); // add menu bar to application
+        bar.add(fileMenu);
+        bar.add(helpMenu);
+
+        //multidimensional arraylissts for the checkboxes, comboboxes and grades
+        myGrades = new TwoDimentionalArrayList<>();
+        comboBoxes = new TwoDimentionalArrayList<>();
+        checkBoxes = new TwoDimentionalArrayList<>();
+
+        //array that contains the list of all queries that were used to add a course
+        addQueries = new ArrayList<>();
+
+        tables = new String[3];
+        tables[2] = "ucourses";
+        southBox = Box.createHorizontalBox();//contains buttons
+        westBox = Box.createVerticalBox();//to hold checkboxes
+        eastBox = Box.createVerticalBox();//to hold grades comboboxes
+        centerBox = Box.createVerticalBox();//to hold resultTable
+
+        add(westBox, BorderLayout.WEST);
+        add(eastBox, BorderLayout.EAST);
+        add(centerBox, BorderLayout.CENTER);
+
+        add(southBox, BorderLayout.SOUTH);
+        done = new JButton("   Done   ");
+        addCourse = new JButton("Add Course");
+        previous = new JButton("Previous");
+        next = new JButton("   Next   ");
+        southBox.add(addCourse);
+        southBox.add(Box.createHorizontalGlue());
+        southBox.add(previous);
+        southBox.add(next);
+        southBox.add(done);
+        add(southBox, BorderLayout.SOUTH);
+
+        previous.setEnabled(false);
+
+        //create ResultSetTableModel and display database table
+        getTables(programme, specialty);
+        setQuery(specialty);
+        displayForm(query);
+
+        exit.addActionListener(
+                new ActionListener() // anonymous inner class
+                {
+                    // terminate application when user clicks exit
+                    @Override
+                    public void actionPerformed(ActionEvent event) {
+                        tableModel.disconnectFromDatabase();
+                        System.exit(0); // exit application
+                    } // end method actionPerformed
+                } // end anonymous inner class
+        ); //end of action listener
+        remove.setEnabled(false);
+
+        content.addActionListener(null);
+        about.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        JOptionPane.showMessageDialog(Cummulative.this, "Application for calculating GPA for the University of Buea\n"
+                                + "GPA Calculator comes with ABSOLUTELY NO WARRANTY \n"
+                                + "This is a free software\n"
+                                + "Email: princeme.sama@gmail.com\n\n"
+                                + "                     Copyright (C) 2014 Harvey Sama",
+                                "About GPA Calculator", JOptionPane.PLAIN_MESSAGE);
+                    }
+                });
+
+        addCourse.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        try {
+                            addCourse();
+                        } catch (SQLException ex) {
+                            Logger.getLogger(Cummulative.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+
+                    }
+                });
+
+        done.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        calculateGPA();
+                    }
+                });
+
+        next.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+
+                        count = 0;
+                        if (Semester < 8) {
+                            Semester++;
+                            myGrades.addArrayList();
+                            checkBoxes.addArrayList();
+                            comboBoxes.addArrayList();
+                            arrayIndex++;
+                            Cummulative.this.setTitle("Semester " + myGrades.size());
+                            setQuery(specialty);
+                            try {
+                                displayForm(query);
+                            } catch (SQLException ex) {
+                                Logger.getLogger(Cummulative.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                            System.out.println(myGrades.size());
+
+                        } else {
+                            calculateGPA();
+                        }
+                    }
+                });
+        WindowListener l = new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent event) {
+                tableModel.disconnectFromDatabase();
+                System.exit(0);
+            }
+        };
+        Cummulative.this.addWindowListener(l);
+    }
+
+    public class InvalidMarkException extends Exception {
+
+        public InvalidMarkException(String message) {
+            super(message);
+        }
+    }
+
+    private class ComboBoxHandler implements ActionListener {
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            for (int boxIndex = 0; boxIndex < numberOfRows; boxIndex++) {
+                //find the index of the checkbox that caused the event
+                if (e.getSource().equals(comboBoxes.getInnerElement(arrayIndex, boxIndex))) {
+
+                    myGrades.setGrade(arrayIndex, boxIndex,
+                            comboBoxes.getInnerElement(arrayIndex, boxIndex).getSelectedItem().toString());
+                    break;
+                }
+            }
+        }
+    }
+
+    private class CheckBoxHandler implements ItemListener {
+
+        int ca, exam, resit;
+        String grade = null;
+        int i;
+
+        @Override
+        public void itemStateChanged(ItemEvent e) {
+            for (i = 0; i < numberOfRows; i++) {
+
+                if (checkBoxes.getInnerElement(arrayIndex, i).isSelected() /*&&
+                         e.getStateChange() == ItemEvent.SELECTED*/) {
+                    final Marks marks = new Marks();
+                    marks.setLocation(570, 300);
+                    marks.setVisible(true);
+
+                    marks.setSize(200, 100);
+                    marks.setResizable(false);
+                    setDefaultCloseOperation(EXIT_ON_CLOSE);
+
+                    WindowListener listener = new WindowAdapter() {
+                        @Override
+
+                        public void windowClosing(WindowEvent event) {
+                            if (marks.ca == 0 && marks.exam == 0 && marks.resit == 0) {
+                                checkBoxes.getInnerElement(arrayIndex, i).setSelected(false);
+
+                            }
+                        }
+
+                        @Override
+                        public void windowClosed(WindowEvent event) {
+                            ca = marks.ca;
+                            System.out.println("THE CA :" + ca);
+                            exam = marks.exam;
+                            resit = marks.resit;
+                            calculateGrade();
+                            comboBoxes.getInnerElement(arrayIndex, i).setSelectedItem(grade);
+                            System.out.println(i);
+                            System.out.println(grade);
+                        }
+                    };
+
+                    marks.addWindowListener(listener);
+                    break;
+                } else {
+                    myGrades.setGrade(arrayIndex, i,
+                            comboBoxes.getInnerElement(arrayIndex, arrayIndex).getItemAt(0).toString());
+                }
+            }
+
+        }
+
+        public void calculateGrade() {
+            System.out.println(ca + " " + exam + " " + resit);
+            int finalMark = (int) Math.ceil(ca + (exam + resit) / 2);
+            System.out.println(finalMark);
+            if (finalMark >= 80) {
+                grade = "A";
+            } else if (finalMark >= 70 && finalMark < 80) {
+                grade = "B+";
+            } else if (finalMark >= 60 && finalMark < 70) {
+                grade = "B";
+            } else if (finalMark >= 55 && finalMark < 60) {
+                grade = "C+";
+            } else if (finalMark >= 50 && finalMark < 55) {
+                grade = "C";
+            } else if (finalMark >= 45 && finalMark < 50) {
+                grade = "D+";
+            } else if (finalMark >= 40 && finalMark < 45) {
+                grade = "D";
+            } else {
+                grade = "F";
+            }
+
+        }
+
+        private class Marks extends JFrame {//Window to handle marks input
+
+            JButton ok;
+            JFormattedTextField CA, EXAM, RESIT;
+            Dimension dim = new Dimension(60, 40), dim2 = new Dimension(50, 25);
+            int ca, exam, resit;
+
+            private Marks() {
+                try {
+                    JLabel Ca, Exam, Resit;
+                    ok = new JButton("OK");
+                    ok.setMaximumSize(dim2);
+                    Ca = new JLabel("CA");
+                    Exam = new JLabel("Exam");
+                    Resit = new JLabel("Resit");
+                    CA = new JFormattedTextField(new MaskFormatter("##"));
+                    EXAM = new JFormattedTextField(new MaskFormatter("##"));
+                    RESIT = new JFormattedTextField(new MaskFormatter("##"));
+                    Box northBox = Box.createHorizontalBox();
+                    Box centerBox = Box.createHorizontalBox();
+                    Box southBox = Box.createHorizontalBox();
+                    northBox.add(Box.createHorizontalStrut(22));
+                    northBox.add(Ca);
+                    northBox.add(Box.createHorizontalStrut(42));
+                    northBox.add(Exam);
+                    northBox.add(Box.createHorizontalStrut(32));
+                    northBox.add(Resit);
+                    northBox.add(Box.createHorizontalGlue());
+                    add(northBox, BorderLayout.NORTH);
+                    centerBox.add(CA);
+                    centerBox.add(EXAM);
+                    centerBox.add(RESIT);
+                    centerBox.setMaximumSize(dim);
+                    add(centerBox, BorderLayout.CENTER);
+                    southBox.add(Box.createHorizontalGlue());
+                    southBox.add(ok);
+                    southBox.setMaximumSize(dim);
+                    add(southBox, BorderLayout.SOUTH);
+                    ok.addActionListener(new ActionListener() {
+                        @Override
+                        public void actionPerformed(ActionEvent e) {
+                            try {
+                                ca = Integer.parseInt(CA.getText());
+                                exam = Integer.parseInt(EXAM.getText());
+                                resit = Integer.parseInt(RESIT.getText());
+                                if (ca > 30 || exam > 70 || resit > 70) {
+                                    throw new Cummulative.InvalidMarkException("CA marks range from 0 to 30.\n"
+                                            + "Exam and resit marks range from 0 to 70.");
+                                }
+                                Cummulative.CheckBoxHandler.Marks.this.dispose();
+                            } catch (NumberFormatException exception) {
+                                JOptionPane.showMessageDialog(Cummulative.CheckBoxHandler.Marks.this, " You must enter numbers or cancel",
+                                        "Invalid Entery", JOptionPane.ERROR_MESSAGE);
+                            } catch (Cummulative.InvalidMarkException exception) {
+                                JOptionPane.showMessageDialog(Cummulative.CheckBoxHandler.Marks.this, exception.getMessage(),
+                                        "Invalid Entery", JOptionPane.ERROR_MESSAGE);
+                            }
+                        }//end of action performed
+                    });//End of actionlistener
+                } catch (ParseException ex) {
+                    Logger.getLogger(Cummulative.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            }
+        }//endof class Marks
+    }//endof checkBox handler
+
+    private void getTables(String programme, String specialty) {
+
+        if (programme.equals("Computer Engineering")) {
+            tables[0] = "cecourses";
+        } else {
+            tables[0] = "eecourses";
+        }
+        if (!specialty.isEmpty()) {
+            switch (specialty) {
+                case "Software Engineering":
+                    tables[1] = "secourses";
+                    break;
+                case "Network Engineering":
+                    tables[1] = "necourses";
+                    break;
+                case "Telecommunications Engineering":
+                    tables[1] = "telcourses";
+                default:
+                    tables[1] = "pscourses";
+                    break;
+            }
+        }
+    }
+
+    private void setQuery(String specialty) {
+        //tables[0] contains the programme table to query
+        //table[1] contains the specialty table to query
+        if (specialty.isEmpty() || Semester < 5) {
+            query = "SELECT code, name, cv FROM " + tables[0]
+                    + " WHERE semester = "
+                    + Semester;
+        } else {
+            query = "SELECT code, name, cv FROM " + tables[0]
+                    + " WHERE semester = "
+                    + Semester + " UNION (SELECT code, name, cv FROM "
+                    + tables[1] + " WHERE semester = " + Semester + ")";
+
+        }//end of else
+        count = 1;
+    }//end of method setQuery
+
+    public String searchCourses() {
+        String searchQuery;
+        if (Semester < 7) {
+            searchQuery = "SELECT code, name FROM " + tables[0]
+                    + " WHERE Semester < " + Semester + " and "
+                    + "Semester in "
+                    + " (SELECT number FROM Semester WHERE name = "
+                    + "(SELECT name FROM Semester WHERE number  = "
+                    + Semester + ")) UNION (SELECT code, name FROM " + tables[2]
+                    + " WHERE Semester = 3 or Semester = mod( " + Semester + ", 2))";
+            //System.out.println(searchQuery);
+        } else {
+            searchQuery = "SELECT code, name FROM " + tables[0] + " WHERE Semester < "
+                    + Semester + " and Semester in (SELECT number FROM Semester WHERE name = "
+                    + "(SELECT name FROM Semester WHERE number = "
+                    + Semester + ")) UNION " + "SELECT code, name FROM " + tables[1]
+                    + " WHERE Semester < " + Semester + " and Semester in "
+                    + "(SELECT number FROM Semester WHERE name = "
+                    + "(SELECT name FROM Semester WHERE number = " + Semester + ")) UNION "
+                    + "(SELECT code, name FROM " + tables[2] + " WHERE Semester = 3 or Semester = "
+                    + " mod( " + Semester + ", 2))";
+        }
+        return searchQuery;
+    }
+
+    public int addCoursePopUp() throws SQLException {
+        String searchQuery = searchCourses();
+        connection = DriverManager.getConnection(DATABASE_URL, USERNAME, PASSWORD);
+        statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+        resultSet = statement.executeQuery(searchQuery);// return code and names of couses
+        int j = 0;
+        if (resultSet.last()) {//get the number of rows and create a array of size numberOfRows
+            String[] list = new String[resultSet.getRow()];
+            resultSet.first();
+            do {//concatenate the code and the name of each course and fill the array with it for each course in the resultset
+                list[j++] = resultSet.getObject(1).toString().concat(" ").
+                        concat(resultSet.getObject(2).toString());
+            } while (resultSet.next());
+            //then display them
+            try {
+                selectedCourse = JOptionPane.showInputDialog(Cummulative.this, "Select a course", "Add Course",
+                        JOptionPane.PLAIN_MESSAGE, null, list, list[0]).toString();
+            } catch (NullPointerException e) {
+                return JOptionPane.CANCEL_OPTION;
+            }
+        }
+        return 10;
+    }//also create overidden function for the unspecialisable levels 
+
+    public void addCourse() throws SQLException {
+        int option = addCoursePopUp();
+        numberOfRows = tableModel.getRowCount();
+        tableModel.resultSet.first();
+        if (option != JOptionPane.CANCEL_OPTION) {
+            String courseCode = selectedCourse.split(" ")[0];
+            for (int i = 0; i < numberOfRows; i++) {
+                //if the courseid at the given row in the current resultset is the same as the SELECTed courseID
+                //display error and exit
+                if (tableModel.getValueAt(i, 0).toString().equals(courseCode)) {
+                    JOptionPane.showMessageDialog(Cummulative.this, selectedCourse + " is already in the list",
+                            " ", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+            }
+            //if we the course is not found in the resultset, then create a new query for a new resultset
+            if (tableModel.resultSet.getRow() >= numberOfRows) {
+                String newQuery;
+                //search the result in the general table
+                newQuery = "SELECT code, name, cv FROM " + tables[0] + " WHERE code = '"
+                        + courseCode + "'";
+                //if no results are found in the main table then search in the specialization table
+                if (!statement.executeQuery(newQuery).first()) {
+                    newQuery = "SELECT code, name, cv FROM " + tables[1] + " WHERE code = '"
+                            + courseCode + "'";
+                    //if no results are found in the other tables then search in the university courses
+                    if (!statement.executeQuery(newQuery).first()) {
+                        newQuery = "SELECT code, name, cv FROM " + tables[2] + " WHERE code = '"
+                                + courseCode + "'";
+                    }
+                }
+                newQuery = newQuery.concat(")");
+                addQueries.add("UNION (" + newQuery);
+                query = query.concat(" UNION (" + newQuery);
+                count++;
+                displayForm(query);
+            }
+        }
+    }
+
+    public void removeCourse(JTable resultTable) throws SQLException {
+        /* rowCount starts counting from 1,selectedRow starts counting from 0add 1,so I add 1 to have equivalent starting indices
+         * since thesubttraction returns number complementary to the indices in addQueries, 2 - all that value gives the actua index
+         * of the query that has to be removed from the resultSet
+         */
+        int index = (count - 1) - (resultTable.getRowCount() - resultTable.getSelectedRow());
+        System.out.println(addQueries);
+        System.out.println(index);
+        System.out.println(addQueries.get(index));
+        query = query.replace(addQueries.get(index), "");
+        addQueries.remove(index);
+        //remove the check box and combobox in the arrays whose coure was removed 
+        checkBoxes.get(arrayIndex).remove(resultTable.getSelectedRow());
+        comboBoxes.get(arrayIndex).remove(resultTable.getSelectedRow());
+        removing = true;//tell displayForm that we are about to removea course
+        displayForm(query);
+
+    }
+
+    public void displayForm(String query) throws SQLException {
+        Dimension dim = new Dimension(50, 20);
+        Cummulative.ComboBoxHandler handler = null;
+        Cummulative.CheckBoxHandler cHandler = null;
+        JComboBox combo;
+        JCheckBox check;
+        centerBox.removeAll();
+
+        if (count <= 1) {
+            eastBox.removeAll();
+            westBox.removeAll();
+            eastBox.setVisible(false);
+            westBox.setVisible(false);
+            handler = new Cummulative.ComboBoxHandler();
+            cHandler = new Cummulative.CheckBoxHandler();
+            tableModel = new ResultSetTableModel(DATABASE_URL, USERNAME, PASSWORD, query);
+            resultTable = new JTable(tableModel);
+            resultTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            resultTable.getColumn("CODE").setMaxWidth(75);
+            resultTable.getColumn("NAME").setMinWidth(300);
+            resultTable.getColumn("CV").setMaxWidth(30);
+            resultTable.setRowHeight(20);
+
+            centerBox.add(new JScrollPane(resultTable), BorderLayout.CENTER);
+            numberOfRows = resultTable.getRowCount();
+            eastBox.add(Box.createVerticalStrut(24));
+            westBox.add(Box.createVerticalStrut(24));
+            for (int i = 0; i < numberOfRows; i++) {
+                check = new JCheckBox();
+                checkBoxes.addToInnerArray(arrayIndex, check);
+                check.addItemListener(cHandler);//register it to the listener
+                westBox.add(check);//add to box
+
+                combo = new JComboBox(grades);
+                combo.setMinimumSize(dim);
+                combo.setMaximumSize(dim);
+                combo.addActionListener(handler);//register it to the listener
+                comboBoxes.addToInnerArray(arrayIndex, combo);//add combox box to the array of current semester comboboxes
+                //set default grade to the first grade in the combobox
+                myGrades.addToInnerArray(arrayIndex, combo.getItemAt(0).toString());
+                eastBox.add(combo);
+                westBox.add(Box.createVerticalStrut(2));
+            }
+            numberOfRows = myGrades.get(arrayIndex).size();
+            myGrades.get(arrayIndex).trimToSize();
+            numberOfRows = myGrades.get(arrayIndex).size();
+            eastBox.setVisible(true);
+            westBox.setVisible(true);
+
+        } else {
+            centerBox.setVisible(false);
+            tableModel = new ResultSetTableModel(DATABASE_URL, USERNAME, PASSWORD, query);
+            resultTable = new JTable(tableModel);
+            resultTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            resultTable.getColumn("CODE").setMaxWidth(75);
+            resultTable.getColumn("NAME").setMinWidth(300);
+            resultTable.getColumn("CV").setMaxWidth(30);
+            resultTable.setRowHeight(20);
+            if (removing) {
+                eastBox.removeAll();
+                westBox.removeAll();
+                eastBox.add(Box.createVerticalStrut(24));
+                westBox.add(Box.createVerticalStrut(24));
+                for (int i = 0; i < resultTable.getRowCount(); i++) {
+                    eastBox.add(comboBoxes.getInnerElement(arrayIndex, i));
+                    westBox.add(checkBoxes.getInnerElement(arrayIndex, i));
+                    westBox.add(Box.createVerticalStrut(2));
+                }
+                removing = false;
+                count--;
+                if (!addCourse.isEnabled()) {
+                    addCourse.setEnabled(true);
+                }
+            } else {
+                resultSet.close();
+                statement.close();
+                connection.close();
+
+                check = new JCheckBox();
+                checkBoxes.addToInnerArray(arrayIndex, check);
+                check.addItemListener(cHandler);//register it to the listener
+                westBox.add(check);//add to box
+
+                combo = new JComboBox(grades);
+                combo.setMinimumSize(dim);
+                combo.setMaximumSize(dim);
+                combo.addActionListener(handler);//register it to the listener
+                comboBoxes.addToInnerArray(arrayIndex, combo);
+                myGrades.addToInnerArray(arrayIndex, combo.getItemAt(0).toString());
+                eastBox.add(combo);
+                westBox.add(Box.createVerticalStrut(2));
+                if (count == 4) {
+                    addCourse.setEnabled(false);
+                }
+            }
+            centerBox.add(new JScrollPane(resultTable), BorderLayout.CENTER);
+            centerBox.setVisible(true);
+        }
+
+        resultTable.addMouseListener(
+                new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent event) {
+                        if (resultTable.getSelectedRow() != -1) {
+                            remove.setEnabled(true);
+                        } else {
+                            setEnabled(false);
+                        }
+                        System.out.println(resultTable.getSelectedRow() + " " + resultTable.getRowCount());
+                    }
+                });
+        remove.addActionListener(
+                new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+
+                        //if selected index is less than or equal to the number of courses in the initial load display error
+                        if (!(resultTable.getSelectedRow() <= resultTable.getRowCount() - count)) {
+                            try {
+                                removeCourse(resultTable);
+                            } catch (SQLException ex) {
+                                Logger.getLogger(Cummulative.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                        }
+                    }
+                });
+    }
+
+    public void calculateGPA() {
+        Iterator<ArrayList<String>> iterator1 = myGrades.iterator();//Iterate through the outer arraylist rows
+        Iterator<String> iterator2;//iterate through each inner arraylists
+        while (iterator1.hasNext()) {
+            iterator2 = iterator1.next().iterator();
+            int i = 0;
+            while (iterator2.hasNext()) {
+                
+                switch (iterator2.next()) {//tableModel.getvalueAt returns the credit value which is at the given row and column 2
+                    case "A":
+                        sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 4;
+                        break;
+                    case "B+":
+                        sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 3.5;
+                        break;
+                    case "B":
+                        sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 3;
+                        break;
+                    case "C+":
+                        sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 2.5;
+                        break;
+                    case "C":
+                        sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 2;
+                        break;
+                    case "D+":
+                        sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 1.5;
+                        break;
+                    case "D":
+                        sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 1;
+                        break;
+                    default:
+                        sum += Integer.parseInt(tableModel.getValueAt(i, 2).toString()) * 0;
+                        break;
+                }
+                totalCV += Integer.parseInt(tableModel.getValueAt(i, 2).toString());
+                i++;
+            }
+
+        }
+        System.out.println(myGrades);
+        GPA = sum / totalCV;
+        JOptionPane.showMessageDialog(Cummulative.this, "Name: " + Start.myName + "\nYour Cummulative GPA for " + Semester
+                + " semesters is: " + GPA, "GPA", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    class TwoDimentionalArrayList<T> extends ArrayList<ArrayList<T>> {
+
+        public TwoDimentionalArrayList() {
+            this.add(new ArrayList<T>());
+        }
+
+        public void addArrayList() {
+            this.add(new ArrayList<T>());
+        }
+
+        public void addToInnerArray(int arrayIndex, T element) {
+            ArrayList<T> inner = this.get(arrayIndex);
+            inner.add(element);
+        }
+
+        public ArrayList<T> getInnerArray(int arrayIndex) {
+            return this.get(arrayIndex);
+        }
+
+        public T getInnerElement(int arrayIndex, int innerIndex) {
+            return this.getInnerArray(arrayIndex).get(innerIndex);
+        }
+
+        public void setGrade(int arrayIndex, int innerIndex, T element) {
+            this.getInnerArray(arrayIndex).set(innerIndex, element);
+        }
+    }
+
+    /*public static void main(String[] string) throws SQLException {
+     Cummulative test = new Cummulative("Engineering and Technology", "Computer Engineering", "Software Engineering");
+     Dimension dim = new Dimension(500, 440);
+     //test.setSize(500, 250);
+     test.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+     test.setLocation(425, 150);
+     test.setVisible(true); // display frame
+     test.setMinimumSize(dim);
+     test.setResizable(false);
+     }*/
+}
