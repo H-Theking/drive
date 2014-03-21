@@ -1,0 +1,244 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package gpa.calculator;
+
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.swing.JFrame;
+
+/**
+ *
+ * @author Harvey
+ */
+public class GPACalculator {
+
+    private static int semester;
+    private static String name;
+    private static String studentID;
+    private static String faculty;
+    private static String programme;
+    private static String specialty;
+    private static Start startPage;
+    private static String calculationType;
+    private static JFrame page;
+
+    public static void main(String[] args) throws SQLException, InterruptedException {
+        // Thread.sleep(2000);
+
+        String userHomeDir = System.getProperty("user.home", ".");
+        String systemDir = userHomeDir + "/.database";
+        // Set the db system directory.
+        System.setProperty("derby.system.home", systemDir);
+
+        createTables();
+
+        startPage = new Start();
+        startPage.setLocation(500, 200);
+        startPage.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        startPage.setSize(400, 250); // set frame size
+        startPage.setVisible(true); // display frame
+        startPage.setResizable(false);
+
+        startPage.addWindowListener(
+                new WindowAdapter() {
+                    @Override
+                    public void windowClosed(WindowEvent e
+                    ) {
+                        try {
+                            name = Start.myName;
+                            studentID = Start.myStudentID;
+                            faculty = Start.myFaculty;
+                            programme = Start.myProgramme;
+                            specialty = Start.mySpecialty;
+                            calculationType = Start.calculationType;
+                            semester = Start.semester;
+
+                            page = calculationType.equals("Semester GPA")
+                            ? new Semester(studentID, name, faculty, programme, specialty, semester)
+                            : new Cummulative(faculty, programme, specialty);
+
+                            page.setLocation(425, 150);
+                            page.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+                            page.setSize(500, 440); // set frame size
+                            page.setVisible(true); // display frame
+                            page.setResizable(false);
+                            /* page.addWindowListener(
+                             new WindowAdapter() {
+                                        
+                             public void windowsclosing(WindowEvent event){
+                             try {
+                             destroy();
+                             } catch (SQLException ex) {
+                             Logger.getLogger(GPACalculator.class.getName()).log(Level.SEVERE, null, ex);
+                             }
+                             }
+                             });*/
+                        } catch (SQLException ex) {
+                            Logger.getLogger(GPACalculator.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+                    }
+                }
+        );
+    }
+
+    public static final void createTables() throws SQLException {
+        Connection connection = null;
+        Statement statement = null;
+
+        // connect to database
+        try {
+            //Class.forName("org.apache.derby.jdbc.EmbeddedDriver");
+            Class.forName("org.apache.derby.jdbc.EmbeddedDriver");
+
+        } catch (java.lang.ClassNotFoundException e) {
+            System.err.print("ClassNotFoundException: ");
+            System.err.println(e.getMessage());
+        }
+
+        try {
+            connection = DriverManager.getConnection("jdbc:derby:DefaultDatabase;create=true;user=app");
+        } catch (SQLException ex) {
+        }
+// create Statement to query database
+        try {
+            statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+        } catch (NullPointerException e) {
+
+        }
+
+        String query;
+        try {
+            query = "CREATE TABLE APP.cecourses (code CHAR(6) not null, name VARCHAR(50),"
+                    + "semester int not null, cv int not null, primary key(code) )";
+            statement.execute(query);
+
+            query = "INSERT INTO APP.cecourses VALUES ('CEF201','Analysis',1,4),('CEF202','Computer Architecture',2,4),"
+                    + "('CEF203','Linear Algebra',1,4),('CEF204','Data Structures and Algorithms',2,4),"
+                    + "('CEF205','Introduction To comuputing',1,4),('CEF206','Numerical Analysis',2,4),"
+                    + "('CEF207','Programming I',1,4),('CEF208','Information Systems',2,4),('CEF209','Discrete Mathematics',1,4),"
+                    + "('CEF211','Boolean Algebra And Logic Circuits',1,4),('CEF301','Probability And Statistics',3,4),"
+                    + "('CEF304','Database Management Systems Practice',4,4),('CEF305','Systems Programming',3,4),"
+                    + "('CEF306','Object Oriented Programming',4,4),('CEF307','Computer Neetworks And Protocols',3,4),"
+                    + "('CEF308','Internet Programming and Multimedia Systems',4,4),('CEF309','Database Management Systems',3,4),"
+                    + "('CEF310','Digital Signals Processing',4,4),('CEF311','Operating Systems',3,4),('CEF312','Digital Electronics II',4,4),"
+                    + "('CEF313','Digital Electronics I',3,4),('CEF314','Law',4,4),('CEF315','Accounting',3,4),('CEF401','Operations Research',5,4),"
+                    + "('CEF402','Java Mobile Programming',6,4),('CEF403','Unix Administration',5,4),('CEF410','Digital Electronics Practicals',5,4),"
+                    + "('CEF411','Software Engineering',5,4),('CEF413','Embedded Systems',6,4),('CEF414','Quality of Service, ITILISO/CEI',6,4),"
+                    + "('CEF415','Technical Writing',5,4),('CEF416','Economics',6,4),('CEF508','Distributed Computing and Client Server Systems',8,4),"
+                    + "('CEF510','Entrepreneurship',8,4),('CEF598','Project',8,8),('CEF599','Internship',7,30),('EEF210','Cicuit analysis',2,4),"
+                    + "('EEF217','Basic Electronics',1,4),('EEF218','Basic Electronics Practicals',2,4),('EEF314','Sequnce Control Laboratory',4,4),"
+                    + "('EEF315','Sequence Control',3,4),('EEF316','Systems Engineering',4,4),('EEF405','Microprocessors and Microcontrollers',5,4),"
+                    + "('EEF413','Feedback Systems',5,4)";
+
+            statement.execute(query);
+
+            query = "CREATE TABLE APP.eecourses (code CHAR(6) not null, name VARCHAR(45),"
+                    + " semester  int not null, cv  int not null, primary key(code)  )";
+
+            statement.execute(query);
+
+            query = "CREATE TABLE APP.necourses (code CHAR(6) not null, name VARCHAR(45),"
+                    + "semester int not null, cv int not null, primary key(code) )";
+
+            statement.execute(query);
+
+            query = "INSERT INTO APP.necourses VALUES ('CEF418','Network Administration and Monitoring',6,4),"
+                    + "('CEF420','Wireless and WAN Technologies',6,4),"
+                    + "('CEF421','Network Architectures and Dimensioning',5,4),"
+                    + "('CEF422','Enterprise Network Maintenance',6,4),"
+                    + "('CEF423','Virtual Private Network',5,4),"
+                    + "('CEF512','New Network Architectures',8,4),"
+                    + "('CEF514','Intelligent Networks',8,4),"
+                    + "('CEF516','Multimedia Networks and Digital Television',8,4)";
+
+            statement.execute(query);
+
+            query = "CREATE TABLE  APP.programme ("
+                    + "name varchar(45) NOT NULL,"
+                    + "faculty varchar(45) NOT NULL,"
+                    + "PRIMARY KEY (faculty,name)"
+                    + ")";
+
+            statement.execute(query);
+
+            query = "INSERT INTO APP.programme VALUES ('Computer Engineering','College of Technology'),"
+                    + "('Electrical Engineering','College of Technology'),"
+                    + "('Computer Engineering','Engineering and Technology'),"
+                    + "('Electrical Engineering','Engineering and Technology'),"
+                    + "('Applied Physics','Science'),"
+                    + "('Mathematics','Science'),"
+                    + "('Microbiology','Science'),"
+                    + "('Physics','Science')";
+            statement.execute(query);
+
+            query = "CREATE TABLE APP.pscourses (code CHAR(6) not null, name VARCHAR(45),"
+                    + " semester  int not null, cv  int not null, primary key(code)  )";
+
+            statement.execute(query);
+
+            query = "CREATE TABLE APP.secourses (code CHAR(6) not null, name VARCHAR(45),"
+                    + " semester  int not null, cv  int not null, primary key(code)  )";
+
+            statement.execute(query);
+
+            query = "INSERT INTO APP.secourses VALUES ('CEF404','ERP Systems Engineering',6,4),"
+                    + "('CEF405','Analysis and Design Of Algorithms',5,4),"
+                    + "('CEF406','Information Systems Security',6,4),"
+                    + "('CEF407','Object Oriented Modelling',5,4),"
+                    + "('CEF408','Operation and Management of the ORACLE DBMS',6,4),"
+                    + "('CEF409','Fundamentals Of Artificial Intelligence',5,4),"
+                    + "('CEF412','Compilation Theory and Formal',6,4),('CEF414','Human Computer Interaction',6,4),"
+                    + "('CEF502','Project: J2EE and Application Servers',8,4),"
+                    + "('CEF504','Expert Systems and Artificial Intelligence',8,4),"
+                    + "('CEF506','Project: Development Perl/Python Language',8,4)";
+
+            statement.execute(query);
+
+            query = "CREATE TABLE APP.semester (name VARCHAR(15) not null, number  int not null , primary key(number) )";
+
+            statement.execute(query);
+
+            query = "INSERT INTO APP.semester VALUES ('First Semester',1),('Second Semester',2),('First Semester',3),"
+                    + "('Second Semester',4),('First Semester',5),('Second Semester',6),('First Semester',7),('Second Semester',8)";
+
+            statement.execute(query);
+
+            query = "CREATE TABLE  APP.specialization ("
+                    + "  programme varchar(45) NOT NULL,"
+                    + "  field varchar(45) NOT NULL,"
+                    + "  PRIMARY KEY (programme,field)"
+                    + ") ";
+
+            statement.execute(query);
+
+            query = "INSERT INTO APP.specialization VALUES ('Computer Engineering','Network Engineering'),"
+                    + "('Computer Engineering','Software Engineering'),('Computer Engineering','Telecommunications Engineering'),"
+                    + "('Electrical Engineering','Power Systems Engineering'),('Electrical Engineering','Telecommunications Engineering')";
+
+            statement.execute(query);
+
+            query = "CREATE TABLE APP.ucourses (code CHAR(6) not null, name VARCHAR(45),"
+                    + " cv  int not null, semester  int not null, primary key(code)  )";
+
+            statement.execute(query);
+
+            query = "INSERT INTO APP.ucourses VALUES ('CVE100','Civics and Ethics',4,3),('ENG101','English I',2,1),('ENG102','English II',2,0),"
+                    + "('FRE101','French I',2,1),('FRE102','French II',2,0),('SPT100','Sports',4,3)";
+
+            statement.execute(query);
+        } catch (SQLException e) {
+            statement.close();
+            connection.close();
+        }
+    }
+}
